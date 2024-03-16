@@ -1,5 +1,5 @@
 # General
-BASE_DIR = ""
+BASE_DIR = "/Users/axelsorensen/xai/XAI/ConceptBottleneck-master/CUB_200_2011"
 N_ATTRIBUTES = 312
 N_CLASSES = 200
 
