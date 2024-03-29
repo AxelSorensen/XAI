@@ -18,10 +18,6 @@ class ConceptModel(nn.Module):
         super(ConceptModel, self).__init__()
         # Load Inception V3 model with pre-trained weights
         self.model = models.inception_v3(pretrained=True)
-
-         # # freeze all layers
-        for param in self.model.parameters():
-            param.requires_grad = False
         
         # Modify the top classification layer
         num_ftrs = self.model.fc.in_features
@@ -55,35 +51,40 @@ class BottleneckModel(nn.Module):
 
     def forward(self, x):
         concepts_o = self.concept_model(x)
-        if isinstance(concepts_o, tuple):
+
+        # Check if the concept model returns one or two parameters
+        if isinstance(concepts_o, tuple):  # If it returns two parameters
             concepts, _ = concepts_o
-        else:
+        else:  # If it returns only one parameter
             concepts = concepts_o
-            
         predictions = self.prediction_model(concepts)
-        return concepts, predictions
+        return concepts,predictions
 
 # Define your training loop here
-def train_model(model, train_loader, criterion, optimizer, num_epochs=5):
+def train_model(model, train_loader, criterion_c, criterion_p, optimizer, num_epochs=5):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.train()
+    alpha=0.8
 
     for epoch in range(num_epochs):
         running_loss = 0.0
         for batch in train_loader:
             inputs = batch['img'][0]
-            labels = batch['class_label'].to(device)
+            concepts = batch['attribute_label']
+            labels = batch['class_label']
             
             optimizer.zero_grad()  
-            concepts, predictions = model(inputs)
-            
-            loss = criterion(predictions, labels)
-            loss.backward()  
+            out_c,out_p = model(inputs)
+            loss_c = criterion_c(out_c, concepts)
+            loss_p = criterion_p(out_p, labels)
+
+            total_loss = loss_c + alpha*loss_p
+            total_loss.backward()  
             optimizer.step()
             
-            running_loss += loss.item() * inputs.size(0)
+            running_loss += total_loss.item() * inputs.size(0)
         
         epoch_loss = running_loss / len(train_loader.dataset)
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
@@ -108,8 +109,8 @@ def calculate_accuracy(model, data_loader):
         # Compute accuracy
         predicted = torch.round(out_p)
         classes = torch.argmax(predicted, dim=1) #get the index of the predicted class
-        #print(classes)
-        #print(labels)
+        print(classes)
+        print(labels)
         # prediction accuracy
         correct += (classes == labels).sum().item()
         total_p += labels.size(0)
@@ -265,11 +266,12 @@ test_loader = DataLoader(test_dataset, batch_size=32, sampler=test_sampler)
 # Define your model, optimizer, and loss function
 model = BottleneckModel()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-criterion = nn.CrossEntropyLoss()
+criterion_c = nn.BCEWithLogitsLoss()
+criterion_p = nn.CrossEntropyLoss()
 
-model.load_state_dict(torch.load('standard_model.pth'))
+model.load_state_dict(torch.load('joint_model.pth'))
 # Train the model
-train_model(model, train_loader, criterion, optimizer)
+train_model(model, train_loader, criterion_c, criterion_p, optimizer)
 
 # Calculate accuracy on the validation set (assuming you have one)
 # Assuming val_loader is defined somewhere in your code
@@ -278,4 +280,4 @@ print(f'Concept Accuracy: {val_accuracy_c:.4f}')
 print(f'Prediction Accuracy: {val_accuracy_p:.4f}')
 
 # Save the model
-torch.save(model.state_dict(), 'standard_model2.pth')
+torch.save(model.state_dict(), 'joint_model2.pth')

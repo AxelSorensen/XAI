@@ -4,7 +4,7 @@ from os.path import isfile, isdir, join
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split, SubsetRandomSampler
+from torch.utils.data import DataLoader, random_split,SubsetRandomSampler
 from torchvision import transforms
 import torchvision.models as models
 from torchvision.transforms import ToTensor, Resize
@@ -20,8 +20,8 @@ class ConceptModel(nn.Module):
         self.model = models.inception_v3(pretrained=True)
 
          # # freeze all layers
-        for param in self.model.parameters():
-            param.requires_grad = False
+        #for param in self.model.parameters():
+        #    param.requires_grad = False
         
         # Modify the top classification layer
         num_ftrs = self.model.fc.in_features
@@ -43,84 +43,93 @@ class PredictionModel(nn.Module): # single linear layer logistic reg
     def forward(self, c):
         c = self.relu(self.fc1(c))
         c = self.relu(self.fc2(c))
-        c = self.fc3(c)
+        c=self.fc3(c)
+        #c = self.softmax(self.fc3(c))
         return c
 
-# Define your model classes here
-class BottleneckModel(nn.Module):
-    def __init__(self):
-        super(BottleneckModel, self).__init__()
-        self.concept_model = ConceptModel()
-        self.prediction_model = PredictionModel()
-
-    def forward(self, x):
-        concepts_o = self.concept_model(x)
-        if isinstance(concepts_o, tuple):
-            concepts, _ = concepts_o
-        else:
-            concepts = concepts_o
-            
-        predictions = self.prediction_model(concepts)
-        return concepts, predictions
-
 # Define your training loop here
-def train_model(model, train_loader, criterion, optimizer, num_epochs=5):
+def train_c_model(model, train_loader, criterion, optimizer, num_epochs=5):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    model.train()
 
     for epoch in range(num_epochs):
+        model.train()
         running_loss = 0.0
         for batch in train_loader:
             inputs = batch['img'][0]
-            labels = batch['class_label'].to(device)
-            
-            optimizer.zero_grad()  
-            concepts, predictions = model(inputs)
-            
-            loss = criterion(predictions, labels)
-            loss.backward()  
+            labels = batch['attribute_label']
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs,_ = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
             optimizer.step()
-            
             running_loss += loss.item() * inputs.size(0)
         
-        epoch_loss = running_loss / len(train_loader.dataset)
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
+        epoch_loss = running_loss / len(train_dataset)
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+
+# Define your training loop here
+def train_p_model(model, train_loader, criterion, optimizer, num_epochs=5):
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        for batch in train_loader:
+            inputs = batch['attribute_label']
+            labels = batch['class_label']
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            predicted = torch.round(outputs)
+            classes = torch.argmax(predicted, dim=1)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * inputs.size(0)
+        
+        epoch_loss = running_loss / len(train_dataset)
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
 # Calculate accuracy function
-def calculate_accuracy(model, data_loader):
+def calculate_accuracy(model_c, model_p, data_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.eval()
-    p_accuracy = 0
-    c_accuracy = 0
-    total_c=0
-    correct=0
+    model_p.eval()
+    model_c.eval()
+
     total_p = 0
+    total_c = 0
+    correct_p = 0
+    accuracy_c = 0
+    with torch.no_grad():
+        accuracy = 0
+        for batch in test_loader:
+            inputs = batch['img'][0]
+            concepts = batch['attribute_label']
+            labels = batch['class_label']
+            inputs, concepts, labels = inputs.to(device), concepts.to(device), labels.to(device)
+            conc = model_c(inputs)
+            outputs_1 = model_p(conc)
+            #outputs_2 = model_p(concepts)
+            
+            accuracy_c += binary_accuracy(conc, concepts)
+            total_c+=1
 
-    for batch in test_loader:
-        inputs = batch['img'][0]
-        labels = batch['class_label']
-        concepts = batch['attribute_label']
-        inputs, labels = inputs.to(device), labels.to(device)
-        out_c, out_p = model(inputs)
-   
-        # Compute accuracy
-        predicted = torch.round(out_p)
-        classes = torch.argmax(predicted, dim=1) #get the index of the predicted class
-        #print(classes)
-        #print(labels)
-        # prediction accuracy
-        correct += (classes == labels).sum().item()
-        total_p += labels.size(0)
-        # concept accuracy
-        c_accuracy += binary_accuracy(out_c, concepts)
-        total_c+=1
+            predicted = torch.round(outputs_1)
+            classes = torch.argmax(predicted, dim=1)
 
-    c_accuracy /= total_c
-    p_accuracy = (correct/total_p)*100
+            #print(classes)
+            #print(labels)
 
-    return c_accuracy.detach().numpy(), p_accuracy
+            correct_p += (classes == labels).sum().item()
+            total_p += labels.size(0)
+    accuracy_c /= total_c
+    accuracy_p = correct_p/total_p
+    return accuracy_c.detach().numpy(),accuracy_p
 
 def binary_accuracy(output, target):
     """
@@ -244,6 +253,7 @@ def data_load():
 # Define your dataset and dataloader
 # Assuming you have defined your dataset and dataloader somewhere in your code
 train_dataset,val_dataset,test_dataset = data_load()
+
 train_indices = list(range(len(train_dataset)))
 val_indices = list(range(len(val_dataset)))
 test_indices = list(range(len(test_dataset)))
@@ -261,21 +271,27 @@ test_sampler = SubsetRandomSampler(test_indices)
 train_loader = DataLoader(train_dataset, batch_size=32, sampler=train_sampler)
 val_loader = DataLoader(val_dataset, batch_size=32, sampler=val_sampler)
 test_loader = DataLoader(test_dataset, batch_size=32, sampler=test_sampler)
-
+model_c = ConceptModel()
+model_c.load_state_dict(torch.load('indepc_model.pth'))
+criterion = nn.BCEWithLogitsLoss()
+optimizer = optim.Adam(model_c.model.fc.parameters(), lr=0.001)
 # Define your model, optimizer, and loss function
-model = BottleneckModel()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+#model.load_state_dict(torch.load('standard_model.pth'))
+# Train the model
+#train_c_model(model_c, train_loader, criterion, optimizer)
+
+model_p = PredictionModel()
+model_p.load_state_dict(torch.load('indepp_model.pth'))
+optimizer = optim.Adam(model_p.parameters(), lr=0.001)
 criterion = nn.CrossEntropyLoss()
 
-model.load_state_dict(torch.load('standard_model.pth'))
-# Train the model
-train_model(model, train_loader, criterion, optimizer)
-
+#train_p_model(model_p, train_loader, criterion, optimizer)
 # Calculate accuracy on the validation set (assuming you have one)
 # Assuming val_loader is defined somewhere in your code
-val_accuracy_c,val_accuracy_p, = calculate_accuracy(model, test_loader)
+val_accuracy_c,val_accuracy_p, = calculate_accuracy(model_c,model_p, test_loader)
 print(f'Concept Accuracy: {val_accuracy_c:.4f}')
 print(f'Prediction Accuracy: {val_accuracy_p:.4f}')
 
 # Save the model
-torch.save(model.state_dict(), 'standard_model2.pth')
+torch.save(model_c.state_dict(), 'indepc_model.pth')
+torch.save(model_p.state_dict(), 'indepp_model2.pth')
