@@ -1,3 +1,5 @@
+.venv
+data/
 CUB_200_2011/images
 *.pyc
 datasets

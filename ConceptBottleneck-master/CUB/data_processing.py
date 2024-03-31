@@ -14,7 +14,7 @@ from collections import defaultdict as ddict
 
 def extract_data(data_dir):
     cwd = os.getcwd()
-    data_path = join(cwd, data_dir + "/images")
+    data_path = join(cwd, data_dir, "images")
     val_ratio = 0.2
 
     path_to_id_map = dict()  # map from full image path to image id
