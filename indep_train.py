@@ -143,7 +143,7 @@ def binary_accuracy(output, target):
 
 def extract_data(data_dir,dataset):
     cwd = os.getcwd()
-    data_path = join(cwd, data_dir + "\\images")
+    data_path = join(cwd, data_dir + "/images")
     val_ratio = 0.1
 
     path_to_id_map = dict()  # map from full image path to image id
@@ -171,7 +171,7 @@ def extract_data(data_dir,dataset):
         },  # calibrate main label based on uncertainty label
         0: {1: 0, 2: 0.5, 3: 0.25, 4: 0},
     }
-    with open(join(cwd, data_dir + "\\attributes\\image_attribute_labels.txt"), "r") as f:
+    with open(join(cwd, data_dir + "/attributes/image_attribute_labels.txt"), "r") as f:
         for line in f:
             file_idx, attribute_idx, attribute_label, attribute_certainty = (
                 line.strip().split()[:4]
@@ -184,7 +184,7 @@ def extract_data(data_dir,dataset):
             attribute_certainties_all[int(file_idx)].append(attribute_certainty)
 
     is_train_test = dict()  # map from image id to 0 / 1 (1 = train)
-    with open(join(cwd, data_dir + "\\train_test_split.txt"), "r") as f:
+    with open(join(cwd, data_dir + "/train_test_split.txt"), "r") as f:
         for line in f:
             idx, is_train = line.strip().split()
             is_train_test[int(idx)] = int(is_train)
@@ -230,7 +230,7 @@ def extract_data(data_dir,dataset):
 
 def data_load():
     #root_dir = f'{os.getcwd()}/CUB_200_2011/images/'
-    root_dir = f'{os.getcwd()}\\CUB_200_2011\\images\\'
+    root_dir = f'{os.getcwd()}/CUB_200_2011/images/'
 
     transform = transforms.Compose([
         Resize((299, 299)),  # Resize images to a fixed size, for example, 224x224
@@ -244,7 +244,7 @@ def data_load():
 
     # Split the dataset randomly into train, validation, and test sets
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
-    data_dir = f'{os.getcwd()}\\CUB_200_2011'
+    data_dir = f'{os.getcwd()}/CUB_200_2011'
     train_dataset, val_dataset, test_dataset = extract_data(data_dir,dataset)
     
 

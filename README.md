@@ -41,3 +41,5 @@ Configuration (paths, hyperparameters) lives in `config.py`.
 ## Status
 
 🚧 Research/experimental — a collection of notebooks and training scripts for coursework or research, not a packaged tool. No `requirements.txt` or `README` existed before this one, so dependencies aren't pinned.
+
+🔧 Fixed a Windows-only hardcoded path bug (`\\` separators) in `joint_train.py`, `seq_train.py`, `indep_train.py`, and `stand_train.py` that crashed on macOS/Linux; scripts now correctly resolve `CUB_200_2011/...` paths. ❌ Still can't fully run: the checked-in `CUB_200_2011/` dataset is missing the actual `images/` folder (only metadata/labels are present), so training scripts fail at `data_load()` regardless of platform — needs the full CUB-200-2011 image set added, which isn't ours to fetch here. `import torch`/`torchvision`/`config` all succeed as of 2026-09-03.
